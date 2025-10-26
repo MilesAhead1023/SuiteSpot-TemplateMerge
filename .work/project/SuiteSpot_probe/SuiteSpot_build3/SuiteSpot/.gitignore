@@ -1,0 +1,8 @@
+.vs/
+*.vcxproj.user
+*.pdb
+*.obj
+*.log
+*.dll
+[Rr]elease*/
+[Dd]ebug*/

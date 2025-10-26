@@ -1,0 +1,241 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<UsingTask TaskName="Zip" TaskFactory="CodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+  <ParameterGroup>
+    <Files ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true" />
+    <ZipFileName ParameterType="System.String" Required="true" />
+    <WorkingDirectory ParameterType="System.String" Required="true" />
+  </ParameterGroup>
+  <Task>
+    <Reference Include="System.IO.Compression.FileSystem" />
+    <Using Namespace="System" />
+    <Using Namespace="System.IO" />
+    <Using Namespace="System.IO.Compression" />
+    <Code Type="Fragment" Language="cs"><![CDATA[
+      if (File.Exists(ZipFileName)) File.Delete(ZipFileName);
+      ZipFile.CreateFromDirectory(WorkingDirectory, ZipFileName, CompressionLevel.Optimal, false);
+      return true;
+    ]]></Code>
+  </Task>
+</UsingTask>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>16.0</VCProjectVersion>
+    <ProjectGuid>{2d54c860-fd62-45f7-b9fe-dd5f50832816}</ProjectGuid>
+    <RootNamespace>SuiteSpot</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <PropertyGroup Label="SuiteSpotPackaging">
+  <SuiteSpotPackageName>SuiteSpot.bakkesplugin</SuiteSpotPackageName>
+</PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="BakkesMod.props" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="BakkesMod.props" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <LinkIncremental>true</LinkIncremental>
+    <OutDir>$(SolutionDir)plugins\</OutDir>
+    <IntDir>$(SolutionDir)build\.intermediates\$(Configuration)\</IntDir>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <LinkIncremental>false</LinkIncremental>
+    <OutDir>$(SolutionDir)plugins\</OutDir>
+    <IntDir>$(SolutionDir)build\.intermediates\$(Configuration)\</IntDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    <AdditionalLibraryDirectories>$(SolutionDir)extern\BakkesModSDK\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories></Link>
+  <PostBuildEvent>
+        <Command>@echo off
+setlocal
+set "BM=%25AppData%25\bakkesmod\bakkesmod"
+set "PLUGDIR=%25BM%25\plugins"
+set "DATADIR=%25BM%25\data"
+set "TRAINING=%25DATADIR%25\SuiteTraining"
+set "WORKSHOPS=%25DATADIR%25\SuiteWorkshops"
+set "PATCH=%25BM%25\bakkesmodsdk\bakkesmod-patch.exe"
+set "OUTDLL=$(TargetPath)"
+set "OUTNAME=$(TargetFileName)"
+if not exist "%25PLUGDIR%25" mkdir "%25PLUGDIR%25" 2>nul
+if not exist "%25TRAINING%25" mkdir "%25TRAINING%25" 2>nul
+if not exist "%25WORKSHOPS%25" mkdir "%25WORKSHOPS%25" 2>nul
+if not exist "%25OUTDLL%25" (
+  echo [SuiteSpot] ERROR: Built DLL missing: "%25OUTDLL%25"
+  exit /b 1
+)
+copy /Y "%25OUTDLL%25" "%25PLUGDIR%25\%25OUTNAME%25" >nul
+tasklist /FI "IMAGENAME eq BakkesMod.exe" | find /I "BakkesMod.exe" >nul
+if errorlevel 1 (
+  echo [SuiteSpot] INFO: BakkesMod not running; skipping patch.
+  echo [SuiteSpot] Plugin deployed successfully.
+  exit /b 0
+)
+if exist "%25PATCH%25" (
+  "%25PATCH%25" "%25PLUGDIR%25\%25OUTNAME%25"
+  if errorlevel 1 (
+    echo [SuiteSpot] WARN: bakkesmod-patch.exe failed; continuing.
+  ) else (
+    echo [SuiteSpot] INFO: DLL patched (BakkesMod running).
+  )
+) else (
+  echo [SuiteSpot] INFO: Patcher not found; skipping patch.
+)
+echo [SuiteSpot] Plugin deployed successfully.
+exit /b 0</Command>
+      </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <AdditionalIncludeDirectories>$(SolutionDir)extern\BakkesModSDK\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    <AdditionalLibraryDirectories>$(SolutionDir)extern\BakkesModSDK\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories></Link>
+    <PreBuildEvent>
+      <Command>powershell.exe -ExecutionPolicy Bypass -NoProfile -NonInteractive -File update_version.ps1 "./version.h"</Command>
+    </PreBuildEvent>
+    
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="imgui\imgui.cpp" />
+    <ClCompile Include="imgui\imguivariouscontrols.cpp" />
+    <ClCompile Include="imgui\imgui_additions.cpp" />
+    <ClCompile Include="imgui\imgui_demo.cpp" />
+    <ClCompile Include="imgui\imgui_draw.cpp" />
+    <ClCompile Include="imgui\imgui_impl_dx11.cpp" />
+    <ClCompile Include="imgui\imgui_impl_win32.cpp" />
+    <ClCompile Include="imgui\imgui_rangeslider.cpp" />
+    <ClCompile Include="imgui\imgui_searchablecombo.cpp" />
+    <ClCompile Include="IMGUI\imgui_stdlib.cpp" />
+    <ClCompile Include="imgui\imgui_timeline.cpp" />
+    <ClCompile Include="imgui\imgui_widgets.cpp" />
+    <ClCompile Include="MapList.cpp" />
+    <ClCompile Include="pch.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="SuiteSpot.cpp" />
+    <ClCompile Include="GuiBase.cpp" />
+    <ClCompile Include="Source.cpp" />
+    <!-- SuiteSpot configuration implementation -->
+    <ClCompile Include="SuiteSpotConfig.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="imgui\imconfig.h" />
+    <ClInclude Include="imgui\imgui.h" />
+    <ClInclude Include="imgui\imguivariouscontrols.h" />
+    <ClInclude Include="imgui\imgui_additions.h" />
+    <ClInclude Include="imgui\imgui_impl_dx11.h" />
+    <ClInclude Include="imgui\imgui_impl_win32.h" />
+    <ClInclude Include="imgui\imgui_internal.h" />
+    <ClInclude Include="imgui\imgui_rangeslider.h" />
+    <ClInclude Include="imgui\imgui_searchablecombo.h" />
+    <ClInclude Include="IMGUI\imgui_stdlib.h" />
+    <ClInclude Include="imgui\imgui_timeline.h" />
+    <ClInclude Include="imgui\imstb_rectpack.h" />
+    <ClInclude Include="imgui\imstb_textedit.h" />
+    <ClInclude Include="imgui\imstb_truetype.h" />
+    <ClInclude Include="logging.h" />
+    <ClInclude Include="MapList.h" />
+    <ClInclude Include="pch.h" />
+    <ClInclude Include="GuiBase.h" />
+    <ClInclude Include="SuiteSpot.h" />
+    <ClInclude Include="version.h" />
+    <!-- SuiteSpot configuration header -->
+    <ClInclude Include="SuiteSpotConfig.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="SuiteSpot.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="README.md" />
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="..\..\..\..\..\..\Videos\NVIDIA\Rocket League\rl1.png" />
+    <Image Include="..\..\..\..\..\..\Videos\NVIDIA\Rocket League\rl2.png" />
+    <Image Include="..\..\..\..\..\..\Videos\NVIDIA\Rocket League\rl3.png" />
+    <Image Include="..\..\..\..\..\..\Videos\NVIDIA\Rocket League\rl4.png" />
+    <Image Include="..\..\..\..\..\..\Videos\NVIDIA\Rocket League\rl5.png" />
+    <Image Include="..\..\..\..\..\..\Videos\NVIDIA\Rocket League\rl6.png" />
+    <Image Include="..\..\..\..\..\..\Videos\NVIDIA\Rocket League\rl7.png" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+<Target Name="MakeBakkesPlugin" AfterTargets="Build">
+        <PropertyGroup>
+          <_PkgDir>$(OutDir)package</_PkgDir>
+          <_PkgFile>$(OutDir)$(SuiteSpotPackageName)</_PkgFile>
+        </PropertyGroup>
+        <MakeDir Directories="$(_PkgDir)\plugins\settings" />
+        <Copy SourceFiles="$(TargetPath)" DestinationFiles="$(_PkgDir)\plugins\$(TargetFileName)" SkipUnchangedFiles="true" />
+        <Copy SourceFiles="$(ProjectDir)plugins\settings\SuiteSpot.set" DestinationFiles="$(_PkgDir)\plugins\settings\SuiteSpot.set" SkipUnchangedFiles="true" Condition="Exists('$(ProjectDir)plugins\settings\SuiteSpot.set')" />
+        <WriteLinesToFile File="$(_PkgDir)\manifest.json" Overwrite="true" Lines="{
+  &quot;plugin_name&quot;: &quot;SuiteSpot&quot;,
+  &quot;version&quot;: &quot;1.0.0&quot;,
+  &quot;description&quot;: &quot;SuiteSpot: queue &amp; training optimizer&quot;,
+  &quot;files&quot;: [
+    { &quot;source&quot;: &quot;plugins/$(TargetFileName)&quot;, &quot;destination&quot;: &quot;plugins/$(TargetFileName)&quot; },
+    { &quot;source&quot;: &quot;plugins/settings/SuiteSpot.set&quot;, &quot;destination&quot;: &quot;plugins/settings/SuiteSpot.set&quot; }
+  ]
+}" />
+        <ItemGroup>
+          <_PkgFiles Include="$(_PkgDir)\**\*.*" />
+        </ItemGroup>
+        <Zip Files="@(_PkgFiles)" WorkingDirectory="$(_PkgDir)" ZipFileName="$(_PkgFile)" />
+      </Target>
+</Project>

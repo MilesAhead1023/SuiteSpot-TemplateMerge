@@ -1,0 +1,22 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36414.22
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "SuiteSpot", "\plugin\SuiteSpot.vcxproj", "{2D54C860-FD62-45F7-B9FE-DD5F50832816}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{2D54C860-FD62-45F7-B9FE-DD5F50832816}.Release|x64.ActiveCfg = Release|x64
+		{2D54C860-FD62-45F7-B9FE-DD5F50832816}.Release|x64.Build.0 = Release|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {5E5B68DB-09BE-40C5-A2D2-1DE75C0939A0}
+	EndGlobalSection
+EndGlobal

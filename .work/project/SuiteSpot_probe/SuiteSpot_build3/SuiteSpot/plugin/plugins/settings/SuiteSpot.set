@@ -1,0 +1,20 @@
+# SuiteSpot Settings UI
+plugin_name "SuiteSpot"
+
+checkbox  "Enable Auto-Queue"            suitespot_autoqueue 0
+inputtext "Delay before Freeplay (sec)"  suitespot_delay_freeplay "2"
+inputtext "Delay before Training (sec)"  suitespot_delay_training "2"
+inputtext "Delay before Workshop (sec)"  suitespot_delay_workshop "2"
+
+button    "Refresh Workshop Maps"        suitespot_refresh_maps
+inputtext "Workshop Folder Path"         suitespot_workshop_path ""
+button    "Open Workshop Folder"         suitespot_open_workshop
+
+# Epic CookedPCConsole support
+inputtext "CookedPCConsole Path (Epic)"  suitespot_cooked_path ""
+button    "Open CookedPCConsole"         suitespot_open_cooked
+button    "Download Workshop Textures"   suitespot_download_textures
+
+# Map import support
+inputtext "Import From Folder"           suitespot_import_from ""
+button    "Import Maps Now"              suitespot_import_now

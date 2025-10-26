@@ -1,0 +1,2 @@
+plugin_name "SuiteSpot"
+checkbox "Enable SuiteSpot" suitespot_enable 1
