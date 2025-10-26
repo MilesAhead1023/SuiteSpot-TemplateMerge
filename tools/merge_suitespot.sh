@@ -1,0 +1,251 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Repo root
+cd "$(git rev-parse --show-toplevel)"
+
+# 1) Ensure inputs
+[ -f SuiteSpot_patched_final.zip ] || { echo "Missing SuiteSpot_patched_final.zip at repo root"; exit 1; }
+
+# 2) Get a VS template (community template used widely for BakkesMod)
+if [ ! -d template ]; then
+  git clone https://github.com/Martinii89/BakkesmodPluginTemplate.git template
+fi
+
+# 3) Prep workspace
+rm -rf .work SuiteSpot_BakkesTemplateMerged
+mkdir -p .work/project SuiteSpot_BakkesTemplateMerged/SuiteSpot
+MERGED_PROJ="SuiteSpot_BakkesTemplateMerged/SuiteSpot"
+
+# 4) Lay down template, unpack your SuiteSpot
+cp -a template/. "$MERGED_PROJ/"
+unzip -q -o SuiteSpot_patched_final.zip -d .work/project
+
+# 5) Locate SuiteSpot plugin root
+PLUGIN_VCX="$(find .work/project -type f -name 'SuiteSpot.vcxproj' | head -n1 || true)"
+if [ -n "$PLUGIN_VCX" ]; then
+  PLUGIN_DIR="$(dirname "$PLUGIN_VCX")"
+else
+  CAND="$(find .work/project -type f -name 'SuiteSpot.cpp' | grep -i '/plugin/' | head -n1 || true)"
+  [ -z "$CAND" ] && { echo "Could not locate SuiteSpot plugin folder"; exit 1; }
+  PLUGIN_DIR="$(dirname "$CAND")"
+fi
+
+# 6) Bring SuiteSpot sources (incl. MapList.*)
+bring=(SuiteSpot.cpp SuiteSpot.h SuiteSpotConfig.h SuiteSpotConfig.cpp GuiBase.cpp GuiBase.h logging.h pch.h pch.cpp resource.h SuiteSpot.rc suitespot.set version.h BakkesMod.props)
+for f in "${bring[@]}"; do
+  [ -f "$PLUGIN_DIR/$f" ] && cp -f "$PLUGIN_DIR/$f" "$MERGED_PROJ/$f"
+done
+[ -f "$PLUGIN_DIR/MapList.h" ]   && cp -f "$PLUGIN_DIR/MapList.h"   "$MERGED_PROJ/MapList.h"
+[ -f "$PLUGIN_DIR/MapList.cpp" ] && cp -f "$PLUGIN_DIR/MapList.cpp" "$MERGED_PROJ/MapList.cpp"
+
+# keep plugins/settings/SuiteSpot.set if present
+if [ -f "$PLUGIN_DIR/plugins/settings/SuiteSpot.set" ]; then
+  mkdir -p "$MERGED_PROJ/plugins/settings"
+  cp -f "$PLUGIN_DIR/plugins/settings/SuiteSpot.set" "$MERGED_PROJ/plugins/settings/SuiteSpot.set"
+fi
+
+# 7) Patch: prefer Program Files for Workshop maps; fallback Documents
+python3 - <<'PY'
+import re, pathlib
+p = pathlib.Path("SuiteSpot_BakkesTemplateMerged/SuiteSpot/SuiteSpot.cpp")
+if p.exists():
+    s = p.read_text(encoding="utf-8", errors="ignore")
+    pat = re.compile(r'inline\s+[A-Za-z_:<>]+\s+epicModsDefault\s*\(\)\s*\{[\s\S]*?\}', re.M)
+    rep = """inline fs::path epicModsDefault() {
+        namespace fs = std::filesystem;
+        const char* pf = std::getenv("ProgramFiles");
+        if (pf) {
+            fs::path p = fs::path(pf) / "Epic Games" / "rocketleague" / "TAGame" / "CookedPCConsole" / "mods";
+            if (fs::exists(p)) { return p; }
+        }
+        const char* pf86 = std::getenv("ProgramFiles(x86)");
+        if (pf86) {
+            fs::path p2 = fs::path(pf86) / "Epic Games" / "rocketleague" / "TAGame" / "CookedPCConsole" / "mods";
+            if (fs::exists(p2)) { return p2; }
+        }
+        const char* up = std::getenv("USERPROFILE");
+        if (up) {
+            fs::path legacy = fs::path(up) / "Documents" / "My Games" / "Rocket League" / "TAGame" / "CookedPCConsole" / "mods";
+            if (fs::exists(legacy)) { return legacy; }
+        }
+        return {};
+    }"""
+    s2, n = pat.subn(rep, s, count=1)
+    if n:
+        p.write_text(s2, encoding="utf-8")
+PY
+
+# 8) Normalize BakkesMod.props
+python3 - <<'PY'
+import re, pathlib
+p = pathlib.Path("SuiteSpot_BakkesTemplateMerged/SuiteSpot/BakkesMod.props")
+if p.exists():
+    t = p.read_text(encoding="utf-8", errors="ignore")
+    if "BakkesModPath" not in t:
+        t = ('<?xml version="1.0" encoding="utf-8"?>\n'
+             '<Project DefaultTargets="ShowBakkesInfo" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">\n'
+             '  <ImportGroup Label="PropertySheets" />\n'
+             '  <PropertyGroup Label="UserMacros">\n'
+             '    <BakkesModPath>$(registry:HKEY_CURRENT_USER\\Software\\BakkesMod\\AppPath@BakkesModPath)</BakkesModPath>\n'
+             '  </PropertyGroup>\n'
+             '  <ItemDefinitionGroup>\n'
+             '    <ClCompile>\n'
+             '      <AdditionalIncludeDirectories>$(BakkesModPath)\\bakkesmodsdk\\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>\n'
+             '    </ClCompile>\n'
+             '    <Link>\n'
+             '      <AdditionalLibraryDirectories>$(BakkesModPath)\\bakkesmodsdk\\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>\n'
+             '      <AdditionalDependencies>pluginsdk.lib;%(AdditionalDependencies)</AdditionalDependencies>\n'
+             '    </Link>\n'
+             '    <PostBuildEvent>\n'
+             '      <Command>"$(BakkesModPath)\\bakkesmodsdk\\bakkesmod-patch.exe" "$(TargetPath)"</Command>\n'
+             '    </PostBuildEvent>\n'
+             '  </ItemDefinitionGroup>\n'
+             '  <ItemGroup />\n'
+             '  <Target Name="ShowBakkesInfo" BeforeTargets="PrepareForBuild">\n'
+             '    <Message Text="Using bakkes found at $(BakkesModPath)" Importance="normal" />\n'
+             '  </Target>\n'
+             '</Project>\n')
+    else:
+        t = re.sub(r"bakkesmodsd[kK]\\\\include","bakkesmodsdk\\\\include",t)
+        t = re.sub(r"bakkesmodsd[kK]\\\\lib","bakkesmodsdk\\\\lib",t)
+        if "bakkesmod-patch.exe" not in t:
+            t = t.replace("</ItemDefinitionGroup>",
+                          '<PostBuildEvent>\n'
+                          '  <Command>"$(BakkesModPath)\\bakkesmodsdk\\bakkesmod-patch.exe" "$(TargetPath)"</Command>\n'
+                          '</PostBuildEvent>\n'
+                          '  </ItemDefinitionGroup>')
+    p.write_text(t, encoding="utf-8")
+PY
+
+# 9) Generate .sln / .vcxproj / .filters from disk
+PROJ="SuiteSpot_BakkesTemplateMerged/SuiteSpot"
+if [ -f "$PROJ/BakkesPluginTemplate.vcxproj" ]; then
+  sed -e 's/BakkesPluginTemplate/SuiteSpot/g' "$PROJ/BakkesPluginTemplate.vcxproj" > "$PROJ/SuiteSpot.vcxproj"
+  rm -f "$PROJ/BakkesPluginTemplate.vcxproj"
+fi
+if [ -f "$PROJ/BakkesPluginTemplate.sln" ]; then
+  sed -e 's/BakkesPluginTemplate/SuiteSpot/g' -e 's/BakkesPluginTemplate.vcxproj/SuiteSpot.vcxproj/g' "$PROJ/BakkesPluginTemplate.sln" > "$PROJ/SuiteSpot.sln"
+  rm -f "$PROJ/BakkesPluginTemplate.sln"
+fi
+
+python3 - <<'PY'
+import re, pathlib, uuid
+proj = pathlib.Path("SuiteSpot_BakkesTemplateMerged/SuiteSpot")
+vcx  = proj/"SuiteSpot.vcxproj"
+if vcx.exists():
+    cpps = sorted([str(p.relative_to(proj)).replace("\\","/") for p in proj.rglob("*.cpp")])
+    hs   = sorted([str(p.relative_to(proj)).replace("\\","/") for p in proj.rglob("*.h")])
+    rcs  = sorted([str(p.relative_to(proj)).replace("\\","/") for p in proj.rglob("*.rc")])
+    txt  = vcx.read_text(encoding="utf-8", errors="ignore")
+    txt  = re.sub(r'\s*<ItemGroup>\s*(?:<ClCompile[^<]+</ClCompile>\s*)+</ItemGroup>','',txt,flags=re.S)
+    txt  = re.sub(r'\s*<ItemGroup>\s*(?:<ClInclude[^<]+</ClInclude>\s*)+</ItemGroup>','',txt,flags=re.S)
+    txt  = re.sub(r'\s*<ItemGroup>\s*(?:<ResourceCompile[^<]+</ResourceCompile>\s*)+</ItemGroup>','',txt,flags=re.S)
+    def grp(tag, items): 
+        return "" if not items else "\n  <ItemGroup>\n" + "\n".join([f'    <{tag} Include="{i}" />' for i in items]) + "\n  </ItemGroup>\n"
+    ins = grp("ClCompile", cpps) + grp("ClInclude", hs) + grp("ResourceCompile", rcs)
+    txt  = txt.replace('</Project>', ins + '\n</Project>')
+    vcx.write_text(txt, encoding="utf-8")
+filters = proj/"SuiteSpot.vcxproj.filters"
+cpps = sorted([p.relative_to(proj).as_posix() for p in proj.rglob("*.cpp")])
+hs   = sorted([p.relative_to(proj).as_posix() for p in proj.rglob("*.h")])
+rcs  = sorted([p.relative_to(proj).as_posix() for p in proj.rglob("*.rc")])
+xml = f'''<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{{{uuid.uuid4()}}}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{{{uuid.uuid4()}}}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;hm;inl;inc;xsd</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{{{uuid.uuid4()}}}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+{chr(10).join([f'    <ClCompile Include="{f}"><Filter>Source Files</Filter></ClCompile>' for f in cpps])}
+  </ItemGroup>
+  <ItemGroup>
+{chr(10).join([f'    <ClInclude Include="{f}"><Filter>Header Files</Filter></ClInclude>' for f in hs])}
+  </ItemGroup>
+  <ItemGroup>
+{chr(10).join([f'    <ResourceCompile Include="{f}"><Filter>Resource Files</Filter></ResourceCompile>' for f in rcs])}
+  </ItemGroup>
+</Project>
+'''
+filters.write_text(xml, encoding="utf-8")
+PY
+
+# 10) Strip non-critical comments & normalize includes
+python3 - <<'PY'
+import re, pathlib
+root = pathlib.Path("SuiteSpot_BakkesTemplateMerged/SuiteSpot")
+def strip_c(src):
+    i,n=0,len(src); out=[]; sl=ml=s=d=False; esc=False
+    while i<n:
+        ch=src[i]; nx=src[i+1] if i+1<n else ''
+        if sl:
+            if ch=='\n': sl=False; out.append(ch)
+            i+=1; continue
+        if ml:
+            if ch=='*' and nx=='/': ml=False; i+=2; continue
+            i+=1; continue
+        if s:
+            out.append(ch)
+            if not esc and ch=="'": s=False
+            esc=(ch=='\\' and not esc); i+=1; continue
+        if d:
+            out.append(ch)
+            if not esc and ch=='"': d=False
+            esc=(ch=='\\' and not esc); i+=1; continue
+        if ch=='/' and nx=='/': sl=True; i+=2; continue
+        if ch=='/' and nx=='*': ml=True; i+=2; continue
+        if ch=="'": s=True; out.append(ch); esc=False; i+=1; continue
+        if ch=='"': d=True; out.append(ch); esc=False; i+=1; continue
+        out.append(ch); i+=1
+    return ''.join(out)
+def strip_xml(src): return re.sub(r'<!--.*?-->', '', src, flags=re.S)
+def strip_hash_lines(txt):
+    out=[]
+    for ln in txt.splitlines():
+        in_s=in_d=False; esc=False; cut=len(ln)
+        for idx,ch in enumerate(ln):
+            if ch=="'" and not in_d and not esc: in_s=not in_s
+            elif ch=='"' and not in_s and not esc: in_d=not in_d
+            elif ch=='#' and not in_s and not in_d: cut=idx; break
+            esc=(ch=='\\' and not esc)
+        out.append(ln[:cut].rstrip())
+    return '\n'.join(out)
+pch_exists = (root/'pch.h').exists()
+for p in root.rglob('*'):
+    if not p.is_file(): continue
+    t=p.read_text(encoding='utf-8',errors='ignore')
+    ext=p.suffix.lower()
+    if ext in {'.c','.cpp','.cc','.cxx','.h','.hpp','.hh','.hxx','.rc'}:
+        t=strip_c(t)
+        if ext in {'.c','.cpp','.cc','.cxx'} and pch_exists:
+            lines=t.splitlines(); seen=False; new=[]
+            for ln in lines:
+                if re.match(r'^\s*#\s*include\s*"pch\.h"\s*$',ln):
+                    if seen: continue
+                    seen=True; new.append('#include "pch.h"')
+                else:
+                    new.append(ln)
+            if not seen:
+                t='#include "pch.h"\n'+('\n'.join(new)).lstrip()
+            else:
+                t='\n'.join(new)
+    elif ext in {'.vcxproj','.filters','.props'}:
+        t=strip_xml(t)
+    elif ext in {'.ps1','.set'}:
+        t=strip_hash_lines(t)
+    t=t.replace('\r\n','\n')
+    t='\n'.join(ln.rstrip() for ln in t.split('\n'))
+    p.write_text(t,encoding='utf-8')
+PY
+
+echo "✅ Merge complete → SuiteSpot_BakkesTemplateMerged/SuiteSpot"
